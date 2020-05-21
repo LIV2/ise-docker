@@ -4,7 +4,7 @@
 
 destination_dir=/opt/Xilinx
 
-downloadlocation_dir=/root/install
+downloadlocation_dir=/tmp/
 
 # &Import tool preferences from previous version
 copy_preferences=N
@@ -21,11 +21,11 @@ application=Acquire or Manage a License Key::0
 # comment all other blocks to install ISE WebPACK
 ################################################################
 
-# package=ISE WebPACK::0
-# application=setupEnv.sh::0
-# application=Install Linux System Generator Info XML::0
-# application=Ensure Linux System Generator Symlinks::0
-# application=Install Cable Drivers::0
+package=ISE WebPACK::1
+application=setupEnv.sh::0
+application=Install Linux System Generator Info XML::0
+application=Ensure Linux System Generator Symlinks::0
+application=Install Cable Drivers::0
 
 
 ################################################################
@@ -76,14 +76,14 @@ application=Acquire or Manage a License Key::0
 # comment all other blocks to install ISE Design Suite System Edition
 ################################################################
 
-package=ISE Design Suite System Edition::1
-application=setupEnv.sh::0
-application=Ensure Linux System Generator Symlinks::0
-application=Install Linux System Generator Info XML::0
-application=Configure WebTalk::0
-application=Enable WebTalk to send software, IP and device usage statistics to Xilinx (Always enabled for WebPACK license)::0
-application=Install Cable Drivers::0
-application=Version Equalizer::0
+#package=ISE Design Suite System Edition::1
+#application=setupEnv.sh::0
+#application=Ensure Linux System Generator Symlinks::0
+#application=Install Linux System Generator Info XML::0
+#application=Configure WebTalk::0
+#application=Enable WebTalk to send software, IP and device usage statistics to Xilinx (Always enabled for WebPACK license)::0
+#application=Install Cable Drivers::0
+#application=Version Equalizer::0
 
 
 ################################################################
@@ -95,4 +95,3 @@ application=Version Equalizer::0
 # application=Configure WebTalk::0
 # application=Enable WebTalk to send software, IP and device usage statistics to Xilinx (Always enabled for WebPACK license)::0
 # application=Install Cable Drivers::0
-
