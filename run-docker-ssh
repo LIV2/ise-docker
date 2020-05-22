@@ -24,4 +24,5 @@ docker run -it --rm \
   -e DISPLAY=${HOST_DOCKER_IP}:${DISPLAY_NUMBER} \
   -v ${PWD}/Xauthority:/home/${CONTAINER_HOME}/.Xauthority \
   -v /home/andrea/PROGETTI/FPGA:/home/${CONTAINER_HOME}/work \
+  -v ${PWD}/Xilinx.lic:/home/${CONTAINER_HOME}/.Xilinx/Xilinx.lic \
   ise-14-7 /bin/bash
