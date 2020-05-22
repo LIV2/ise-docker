@@ -36,5 +36,9 @@ RUN adduser --disabled-password --gecos '' ise
 USER ise
 WORKDIR /home/ise
 
+#defeat tips at startup
+RUN mkdir .config/Xilinx -p
+COPY ISE.conf .config/Xilinx
+
 #source ise settings
 RUN echo "source /opt/Xilinx/14.7/ISE_DS/settings64.sh" >> /home/ise/.bashrc
