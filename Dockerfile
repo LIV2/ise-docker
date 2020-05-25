@@ -35,6 +35,8 @@ RUN cd /tmp/install && TERM=xterm /tmp/setup && \
 RUN rm -rf /tmp/install/
 RUN rm -rf /tmp/*
 
+RUN chmod 777 /tmp/
+
 RUN adduser --disabled-password --gecos '' ise
 USER ise
 WORKDIR /home/ise
