@@ -8,31 +8,31 @@ Example:
 ```
 xilinx impact -batch my.cmd
 ```
-`xilinx` command is executed in the current working directory. 
+`xilinx` command is executed in the current working directory.
 Just copy `xilinx` to a directory in your `PATH`.
 
 To build the docker image, do the following:
 
 1. Make sure you have at enough space available to create the docker image. The install files take 8GB, the final image has about 30GB.
 
-1. Download [Xilinx ISE 14.7](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/design-tools/v2012_4---14_7.html). You will to have to create an account to download the files. Download all 4 files named:
+2. Download [Xilinx ISE 14.7](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/design-tools/v2012_4---14_7.html). You will to have to create an account to download the files. Download all 4 files named:
     - [Windows 7/XP/Server and Linux - Split Installer Base Image - File 1/4](https://www.xilinx.com/member/forms/download/xef.html?filename=Xilinx_ISE_DS_14.7_1015_1-1.tar)
     - [Windows 7/XP/Server and Linux Install Data A - File 2/4](https://www.xilinx.com/member/forms/download/xef.html?filename=Xilinx_ISE_DS_14.7_1015_1-2.zip.xz)
     - [Windows 7/XP/Server and Linux Install Data B - File 3/4](https://www.xilinx.com/member/forms/download/xef.html?filename=Xilinx_ISE_DS_14.7_1015_1-3.zip.xz)
     - [Windows 7/XP/Server and Linux Install Data C - File 4/4](https://www.xilinx.com/member/forms/download/xef.html?filename=Xilinx_ISE_DS_14.7_1015_1-4.zip.xz)
 
-1. Copy Downloads to xilinx-installer folder:
+3. Copy Downloads to xilinx-installer folder:
     ```
     cp ~/Downloads/Xilinx_ISE_DS_14.7_1015_* xilinx-installer/
     ```
 
-1. Run docker build:
+4. Run docker build:
     ```
     ./build
     ```
     *answer no, when asked to push image*
 
-1. After that you can test this with:
+5. After that you can test this with:
     ```
     ./xilinx impact -h
     ```
@@ -54,12 +54,8 @@ To build the docker image, do the following:
     user@machine ~/xilinx-ise #
     ```
 
-1. Create a free license via the [Licensing Solution Center](https://www.xilinx.com/getlicense)
+5a. Alternatively, the script `run-docker` will drop you in shell inside the docker environment. You can use xilinx tools from there
 
-1. Add license to your home dir:
-    ```
-    mkdir -p $HOME/.Xilinx
-    cp ~/Downloads/Xilinx.lic $HOME/.Xilinx/
-    ```
-    The license is mounted into the docker container from `$HOME/.Xilinx/Xilinx.lic` by default. If you like to use another location set up the `XILINX_LIC` environment variable to point to the `Xilinx.lic` file.
+6. Create a free license via the [Licensing Solution Center](https://www.xilinx.com/getlicense)
 
+7. Add license to this directory. The license is mounted into the docker container from the current directory.
