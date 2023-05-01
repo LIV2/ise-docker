@@ -1,5 +1,6 @@
 #!/bin/bash
 
-XILINX_LIC=${XILINX_LIC:-$HOME/.Xilinx/Xilinx.lic}
+MY_PATH="$(dirname -- "${BASH_SOURCE[0]}")"            # relative
+MY_PATH="$(cd -- "$MY_PATH" && pwd)"
 
-docker run --rm -it -v $XILINX_LIC:/root/.Xilinx/Xilinx.lic -v $(pwd):/build docker.i74.de:5000/xilinx-ise:latest /usr/local/bin/wrapper "$@"
+docker run --rm -it --net=host -e DISPLAY=$DISPLAY -v $MY_PATH/Xilinx.lic:/home/ise/.Xilinx/Xilinx.lic -v /home/andrea:/mnt -v /home/andrea/.Xauthority:/home/ise/.Xauthority ise-14-7 /usr/local/bin/wrapper "$@"
