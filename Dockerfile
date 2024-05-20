@@ -38,6 +38,17 @@ RUN rm -rf /tmp/*
 RUN chmod 777 /tmp/
 
 RUN adduser --disabled-password --gecos '' ise
+
+#setup libusb driver
+RUN apt -y install libusb-dev gcc make git fxload && \
+    cd /opt && \
+    git clone https://github.com/dennisfen/xilinx-usb-driver.git && \
+    cd xilinx-usb-driver && \
+    make && \
+    echo ise: | chpasswd -e && \
+    mkdir -p /etc/hotplug/usb/xusbdfwu.fw/ && cp /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/*.hex /etc/hotplug/usb/xusbdfwu.fw/ && \
+    echo alias impact=\'LD_PRELOAD=/opt/xilinx-usb-driver/libusb-driver.so impact\' >> /home/ise/.bashrc
+
 USER ise
 WORKDIR /home/ise
 

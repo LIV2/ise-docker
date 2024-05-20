@@ -2,6 +2,4 @@
 MY_PATH="$(dirname -- "${BASH_SOURCE[0]}")"            # relative
 MY_PATH="$(cd -- "$MY_PATH" && pwd)"
 
-docker run -ti --rm --net=host -e DISPLAY=$DISPLAY -v $MY_PATH/Xilinx.lic:/home/ise/.Xilinx/Xilinx.lic -v /tmp/.X11-unix:/tmp/.X11-unix  -v /home/andrea:/mnt -v /home/andrea/.Xauthority:/home/ise/.Xauthority ise-14-7
-
-# --device=/dev/bus/usb/003/009
+docker run -ti --rm --net=host -e DISPLAY=$DISPLAY -v /dev/bus:/dev/bus --device-cgroup-rule='c *:* rmw' -v $MY_PATH/Xilinx.lic:/home/ise/.Xilinx/Xilinx.lic -v /tmp/.X11-unix:/tmp/.X11-unix  -v $HOME:/mnt -v $HOME/.Xauthority:/home/ise/.Xauthority ise-14-7
