@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+if [[ ${ISE_ENABLE_GUI:-0} != 1 ]]; then
+    echo 'GUI support is disabled in this image; rebuild with ENABLE_GUI=1.' >&2
+    exit 2
+fi
+export HOME=${ISE_GUI_HOME:-/tmp/ise-home}
+export QT_X11_NO_MITSHM=1
+mkdir -p "$HOME"
+if [[ $# == 0 ]]; then
+    set -- ise
+fi
+exec /usr/local/bin/wrapper "$@"

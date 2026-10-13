@@ -1,0 +1,6 @@
+#!/bin/bash
+# Load the userspace cable driver only for iMPACT, including batch mode.
+set -e
+driver=/opt/xilinx-usb-driver/libusb-driver.so
+export LD_PRELOAD="$driver${LD_PRELOAD:+:$LD_PRELOAD}"
+exec "${XILINX:-/opt/Xilinx/14.7/ISE_DS/ISE}/bin/lin64/impact" "$@"

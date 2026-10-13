@@ -1,0 +1,95 @@
+#!/bin/bash
+# Native X11 windows on Linux and macOS from the optional GUI image.
+set -e
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+project_root=${ISE_PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)}
+project_root=$(cd -- "$project_root" && pwd -P)
+working_dir=$(pwd -P)
+if [[ $working_dir != "$project_root" && $working_dir != "$project_root/"* ]]; then
+    echo 'The working directory must be inside ISE_PROJECT_ROOT.' >&2
+    exit 2
+fi
+
+host_os=$(uname -s)
+local_display=${DISPLAY:-}
+case "$host_os" in
+    Darwin)
+        if [[ -z $local_display ]]; then
+            local_display=$(launchctl getenv DISPLAY)
+        fi
+        xauth_bin=${ISE_XAUTH:-/opt/X11/bin/xauth}
+        ;;
+    Linux)
+        xauth_bin=${ISE_XAUTH:-$(command -v xauth || true)}
+        ;;
+    *)
+        echo "Unsupported host operating system: $host_os" >&2
+        exit 2
+        ;;
+esac
+if [[ -z $local_display || ! -x $xauth_bin ]]; then
+    echo 'An X11 display and xauth are required; set DISPLAY in your desktop session.' >&2
+    exit 2
+fi
+display_number=${local_display##*:}
+if [[ ! $display_number =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    echo "Unsupported X11 display: $local_display" >&2
+    exit 2
+fi
+
+# Export only this display's cookie. FamilyWild permits its use from the
+# container hostname without disabling the X server's authentication.
+cookie=$("$xauth_bin" nlist "$local_display")
+if [[ -z $cookie && $host_os == Darwin && $local_display == /* ]]; then
+    # XQuartz's launchd socket path is not an xauth display selector.
+    cookie=$("$xauth_bin" nlist ":$display_number")
+fi
+if [[ -z $cookie ]]; then
+    echo 'No X11 authentication cookie found; check DISPLAY and XAUTHORITY.' >&2
+    exit 2
+fi
+auth_file=$(mktemp /tmp/ise-xauth.XXXXXX)
+trap 'rm -f -- "$auth_file"' EXIT
+printf '%s\n' "$cookie" | sed 's/^..../ffff/' | "$xauth_bin" -f "$auth_file" nmerge -
+unset cookie
+
+options=(--rm --init --platform linux/amd64 --user "$(id -u):$(id -g)"
+    --entrypoint /usr/local/bin/ise-gui-entrypoint
+    --mount "type=bind,src=$project_root,dst=/build"
+    --workdir "/build${working_dir#"$project_root"}"
+    --mount "type=bind,src=$auth_file,dst=/tmp/ise.xauth,readonly"
+    --env XAUTHORITY=/tmp/ise.xauth)
+if [[ $host_os == Linux ]]; then
+    # Host networking also reaches abstract X11 sockets and SSH forwarding.
+    options+=(--network host --env "DISPLAY=$local_display")
+    if [[ -d /tmp/.X11-unix ]]; then
+        options+=(--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,readonly)
+    fi
+else
+    options+=(--env "DISPLAY=host.docker.internal:$display_number")
+fi
+if [[ -t 0 && -t 1 ]]; then
+    options+=(-it)
+else
+    options+=(-i)
+fi
+license=${ISE_LICENSE_FILE:-}
+if [[ -z $license && -f $script_dir/Xilinx.lic ]]; then
+    license=$script_dir/Xilinx.lic
+fi
+if [[ -n $license ]]; then
+    if [[ ! -f $license ]]; then
+        echo "License file does not exist: $license" >&2
+        exit 2
+    fi
+    license=$(cd -- "$(dirname -- "$license")" && pwd)/$(basename -- "$license")
+    options+=(--mount "type=bind,src=$license,dst=/tmp/Xilinx.lic,readonly"
+        --env XILINXD_LICENSE_FILE=/tmp/Xilinx.lic)
+fi
+if [[ $# == 0 ]]; then
+    set -- ise
+fi
+status=0
+docker run "${options[@]}" "${ISE_GUI_IMAGE:-${ISE_IMAGE:-ise-14-7}}" "$@" || status=$?
+exit "$status"

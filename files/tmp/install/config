@@ -13,6 +13,9 @@ copy_preferences=N
 # Enabling this option will speed up installation but may slow down other active applications.
 use_multiple_cores=Y
 
+# Accept the installer EULAs in batch mode, replacing the Expect answers.
+eula_accepted=Y
+
 application=Acquire or Manage a License Key::0
 
 

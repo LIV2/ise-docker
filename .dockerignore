@@ -1,0 +1,9 @@
+.git
+Xilinx.lic
+*.lic
+*.LIC
+__pycache__
+tests
+**/*.part
+**/*.crdownload
+**/*.invalid

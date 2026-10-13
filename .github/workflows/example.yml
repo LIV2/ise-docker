@@ -1,0 +1,33 @@
+name: Build the counter example with an installed ISE image
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Accessible amd64 ISE image, with or without GUI (prefer a digest)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  example:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Synthesize, fit, and generate a programming file
+        shell: bash
+        working-directory: examples/counter
+        env:
+          ISE_IMAGE: ${{ inputs.image }}
+        run: ../../xilinx make 2>&1 | tee build.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ise-counter
+          path: |
+            examples/counter/build.log
+            examples/counter/build/counter.jed
+            examples/counter/build/counter.rpt
+            examples/counter/build/counter.syr

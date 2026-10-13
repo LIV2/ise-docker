@@ -1,7 +1,21 @@
-#!/bin/bash -il
+#!/bin/bash
+set -e
 
-CMD="$1"
-shift
+ise_root=${ISE_ROOT:-/opt/Xilinx/14.7/ISE_DS}
+if [[ -n ${LD_ASSUME_KERNEL:-} ]]; then
+    echo 'Unset LD_ASSUME_KERNEL before running ISE.' >&2
+    exit 1
+fi
+# Source only the installed CLI components, without a login shell or the
+# interactive .bashrc. The vendor scripts expect their directory as $1.
+# shellcheck source=/dev/null
+source "$ise_root/common/.settings64.sh" "$ise_root/common"
+# shellcheck source=/dev/null
+source "$ise_root/ISE/.settings64.sh" "$ise_root/ISE"
+# Keep the iMPACT cable-driver launcher ahead of the vendor binaries.
+export PATH="/usr/local/bin:$PATH"
 
-cd /build
-$CMD "$@"
+if [[ $# == 0 ]]; then
+    set -- bash
+fi
+exec "$@"

@@ -1,5 +1,71 @@
 #!/bin/bash
-MY_PATH="$(dirname -- "${BASH_SOURCE[0]}")"            # relative
-MY_PATH="$(cd -- "$MY_PATH" && pwd)"
+# Linux X11 and USB/JTAG launcher for the same image used on macOS.
+set -e
 
-docker run -ti --rm --net=host -e DISPLAY=$DISPLAY -v /dev/bus:/dev/bus --device-cgroup-rule='c *:* rmw' -v $MY_PATH/Xilinx.lic:/home/ise/.Xilinx/Xilinx.lic -v /tmp/.X11-unix:/tmp/.X11-unix  -v $HOME:/mnt -v $HOME/.Xauthority:/home/ise/.Xauthority ise-14-7
+if [[ $(uname -s) != Linux ]]; then
+    echo 'Use xilinx or xilinx-gui on macOS; run-docker requires Linux.' >&2
+    exit 2
+fi
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+project_root=${ISE_PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)}
+project_root=$(cd -- "$project_root" && pwd -P)
+working_dir=$(pwd -P)
+if [[ $working_dir != "$project_root" && $working_dir != "$project_root/"* ]]; then
+    echo 'The working directory must be inside ISE_PROJECT_ROOT.' >&2
+    exit 2
+fi
+
+options=(--rm --init --platform linux/amd64 --network host
+    --user "$(id -u):$(id -g)" --env HOME=/tmp
+    --env QT_X11_NO_MITSHM=1 --entrypoint /usr/local/bin/wrapper
+    --mount "type=bind,src=$project_root,dst=/build"
+    --workdir "/build${working_dir#"$project_root"}")
+if [[ -t 0 && -t 1 ]]; then
+    options+=(-it)
+else
+    options+=(-i)
+fi
+if [[ -d /dev/bus/usb ]]; then
+    options+=(--mount type=bind,src=/dev/bus/usb,dst=/dev/bus/usb
+        --device-cgroup-rule 'c 189:* rw')
+    for group in $(id -G); do
+        options+=(--group-add "$group")
+    done
+fi
+
+if [[ -n ${DISPLAY:-} ]]; then
+    cookie=$(xauth nlist "$DISPLAY")
+    if [[ -z $cookie ]]; then
+        echo 'No authentication cookie found for DISPLAY.' >&2
+        exit 2
+    fi
+    auth_file=$(mktemp /tmp/ise-xauth.XXXXXX)
+    trap 'rm -f -- "$auth_file"' EXIT
+    printf '%s\n' "$cookie" | sed 's/^..../ffff/' | xauth -f "$auth_file" nmerge -
+    unset cookie
+    options+=(--env "DISPLAY=$DISPLAY" --env XAUTHORITY=/tmp/ise.xauth
+        --mount "type=bind,src=$auth_file,dst=/tmp/ise.xauth,readonly")
+    if [[ -d /tmp/.X11-unix ]]; then
+        options+=(--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,readonly)
+    fi
+fi
+
+license=${ISE_LICENSE_FILE:-}
+if [[ -z $license && -f $script_dir/Xilinx.lic ]]; then
+    license=$script_dir/Xilinx.lic
+fi
+if [[ -n $license ]]; then
+    if [[ ! -f $license ]]; then
+        echo "License file does not exist: $license" >&2
+        exit 2
+    fi
+    license=$(cd -- "$(dirname -- "$license")" && pwd)/$(basename -- "$license")
+    options+=(--mount "type=bind,src=$license,dst=/tmp/Xilinx.lic,readonly"
+        --env XILINXD_LICENSE_FILE=/tmp/Xilinx.lic)
+fi
+if [[ $# == 0 ]]; then
+    set -- bash
+fi
+status=0
+docker run "${options[@]}" "${ISE_IMAGE:-ise-14-7}" "$@" || status=$?
+exit "$status"
