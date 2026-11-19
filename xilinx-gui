@@ -54,7 +54,9 @@ trap 'rm -f -- "$auth_file"' EXIT
 printf '%s\n' "$cookie" | sed 's/^..../ffff/' | "$xauth_bin" -f "$auth_file" nmerge -
 unset cookie
 
-options=(--rm --init --platform linux/amd64 --user "$(id -u):$(id -g)"
+options=(--rm --init --platform linux/amd64 --user 0:0
+    --env "ISE_GUI_UID=$(id -u)" --env "ISE_GUI_GID=$(id -g)"
+    --hostname ise --add-host ise:127.0.0.1
     --entrypoint /usr/local/bin/ise-gui-entrypoint
     --mount "type=bind,src=$project_root,dst=/build"
     --workdir "/build${working_dir#"$project_root"}"
@@ -64,7 +66,7 @@ if [[ $host_os == Linux ]]; then
     # Host networking also reaches abstract X11 sockets and SSH forwarding.
     options+=(--network host --env "DISPLAY=$local_display")
     if [[ -d /tmp/.X11-unix ]]; then
-        options+=(--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,readonly)
+        options+=(--mount "type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,readonly")
     fi
 else
     options+=(--env "DISPLAY=host.docker.internal:$display_number")

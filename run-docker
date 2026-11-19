@@ -16,8 +16,7 @@ if [[ $working_dir != "$project_root" && $working_dir != "$project_root/"* ]]; t
 fi
 
 options=(--rm --init --platform linux/amd64 --network host
-    --user "$(id -u):$(id -g)" --env HOME=/tmp
-    --env QT_X11_NO_MITSHM=1 --entrypoint /usr/local/bin/wrapper
+    --env HOME=/tmp --env QT_X11_NO_MITSHM=1
     --mount "type=bind,src=$project_root,dst=/build"
     --workdir "/build${working_dir#"$project_root"}")
 if [[ -t 0 && -t 1 ]]; then
@@ -26,7 +25,7 @@ else
     options+=(-i)
 fi
 if [[ -d /dev/bus/usb ]]; then
-    options+=(--mount type=bind,src=/dev/bus/usb,dst=/dev/bus/usb
+    options+=(--mount "type=bind,src=/dev/bus/usb,dst=/dev/bus/usb"
         --device-cgroup-rule 'c 189:* rw')
     for group in $(id -G); do
         options+=(--group-add "$group")
@@ -34,6 +33,12 @@ if [[ -d /dev/bus/usb ]]; then
 fi
 
 if [[ -n ${DISPLAY:-} ]]; then
+    # Initialize RPC as root, then run the GUI with the caller's IDs and
+    # supplementary groups (including access to USB/JTAG devices).
+    options+=(--user 0:0 --entrypoint /usr/local/bin/ise-gui-entrypoint
+        --env "ISE_GUI_UID=$(id -u)" --env "ISE_GUI_GID=$(id -g)"
+        --env "ISE_GUI_GROUPS=$(id -G | tr ' ' ',')"
+        --hostname ise --add-host ise:127.0.0.1)
     cookie=$(xauth nlist "$DISPLAY")
     if [[ -z $cookie ]]; then
         echo 'No authentication cookie found for DISPLAY.' >&2
@@ -46,8 +51,10 @@ if [[ -n ${DISPLAY:-} ]]; then
     options+=(--env "DISPLAY=$DISPLAY" --env XAUTHORITY=/tmp/ise.xauth
         --mount "type=bind,src=$auth_file,dst=/tmp/ise.xauth,readonly")
     if [[ -d /tmp/.X11-unix ]]; then
-        options+=(--mount type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,readonly)
+        options+=(--mount "type=bind,src=/tmp/.X11-unix,dst=/tmp/.X11-unix,readonly")
     fi
+else
+    options+=(--user "$(id -u):$(id -g)" --entrypoint /usr/local/bin/wrapper)
 fi
 
 license=${ISE_LICENSE_FILE:-}

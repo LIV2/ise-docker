@@ -4,10 +4,42 @@ if [[ ${ISE_ENABLE_GUI:-0} != 1 ]]; then
     echo 'GUI support is disabled in this image; rebuild with ENABLE_GUI=1.' >&2
     exit 2
 fi
-export HOME=${ISE_GUI_HOME:-/tmp/ise-home}
+gui_home=${ISE_GUI_HOME:-/tmp/ise-home}
 export QT_X11_NO_MITSHM=1
-mkdir -p "$HOME"
+
+# The launchers start as root only to initialize the portmapper. All
+# vendor code and project commands run with the caller's numeric IDs.
+gui_uid=${ISE_GUI_UID:-$(id -u)}
+gui_gid=${ISE_GUI_GID:-$(id -g)}
+gui_groups=${ISE_GUI_GROUPS:-}
+if [[ ! $gui_uid =~ ^[0-9]+$ || ! $gui_gid =~ ^[0-9]+$ ||
+      ( -n $gui_groups && ! $gui_groups =~ ^[0-9]+(,[0-9]+)*$ ) ]]; then
+    echo 'ISE_GUI_UID, ISE_GUI_GID and ISE_GUI_GROUPS require numeric IDs.' >&2
+    exit 2
+fi
+if [[ $(id -u) == 0 ]]; then
+    install -d -m 700 -o "$gui_uid" -g "$gui_gid" "$gui_home"
+else
+    mkdir -p "$gui_home"
+fi
+/usr/local/bin/ise-start-rpcbind
+# The loader expands $LIB for each child's ELF class. Restrict only the
+# legacy RPC server factories, after bootstrap and privilege dropping.
+gui_preload="/usr/\$LIB/ise-windu-rpc.so${LD_PRELOAD:+:$LD_PRELOAD}"
 if [[ $# == 0 ]]; then
     set -- ise
 fi
+if [[ $(id -u) == 0 ]]; then
+    groups=(--clear-groups)
+    if [[ -n $gui_groups ]]; then
+        groups=(--groups "$gui_groups")
+    fi
+    # Set HOME after dropping IDs: even bootstrap executables can create
+    # Rosetta cache files, which must not become root-owned in this home.
+    exec setpriv --reuid "$gui_uid" --regid "$gui_gid" "${groups[@]}" \
+        --no-new-privs /usr/bin/env HOME="$gui_home" LD_PRELOAD="$gui_preload" \
+        /usr/local/bin/wrapper "$@"
+fi
+export HOME=$gui_home
+export LD_PRELOAD=$gui_preload
 exec /usr/local/bin/wrapper "$@"

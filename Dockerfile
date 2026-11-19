@@ -63,8 +63,14 @@ RUN gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
 COPY tools/xilhelp-compat.c /tmp/xilhelp-compat.c
 RUN gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
     /tmp/xilhelp-compat.c -o /tmp/xilhelp-compat.so -ldl
-RUN apt-get update && apt-get install -y --no-install-recommends python3 && \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 gcc-multilib libc6-dev-i386 && \
     rm -rf /var/lib/apt/lists/*
+COPY tools/windu-rpc-compat.c /tmp/windu-rpc-compat.c
+RUN gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+    /tmp/windu-rpc-compat.c -o /tmp/windu-rpc64.so -ldl && \
+    gcc -m32 -shared -fPIC -O2 -Wall -Wextra -Werror \
+    /tmp/windu-rpc-compat.c -o /tmp/windu-rpc32.so -ldl
 COPY tools/patch-windu-registry.py /tmp/patch-windu-registry.py
 COPY --from=installed /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/windu_registryd50 /tmp/windu_registryd50.original
 RUN python3 /tmp/patch-windu-registry.py \
@@ -76,6 +82,8 @@ COPY --from=xprint /usr/lib/x86_64-linux-gnu/libXp.so.6.2.0 /usr/lib/x86_64-linu
 RUN ln -s libXp.so.6.2.0 /usr/lib/x86_64-linux-gnu/libXp.so.6
 COPY --from=native-compat /tmp/zynqconfig-test-compat.so /usr/local/lib/ise/
 COPY --from=native-compat /tmp/xilhelp-compat.so /usr/local/lib/ise/
+COPY --from=native-compat /tmp/windu-rpc64.so /usr/lib/x86_64-linux-gnu/ise-windu-rpc.so
+COPY --from=native-compat /tmp/windu-rpc32.so /usr/lib/i386-linux-gnu/ise-windu-rpc.so
 
 # Keep all ISE device databases and both library architectures. EDK and
 # PlanAhead are separate products and are not needed for this CLI target.
@@ -110,8 +118,11 @@ RUN case "$ENABLE_GUI" in \
     esac && \
     apt-get update && apt-get install -y --no-install-recommends \
         openjdk-8-jre build-essential libxmu6 libxm4 libxpm4 libstdc++5 \
-        x11-utils xauth xterm fonts-dejavu-core xfonts-base xfonts-75dpi && \
+        x11-utils xauth xterm fonts-dejavu-core xfonts-base xfonts-75dpi \
+        rpcbind netbase util-linux && \
     rm -rf /var/lib/apt/lists/* && \
+    printf '\nrpcbind: 127.0.0.1 [::1]\n' >> /etc/hosts.allow && \
+    printf '\nrpcbind: ALL\n' >> /etc/hosts.deny && \
     jre=/opt/Xilinx/14.7/ISE_DS/ISE/java/lin64/jre && \
     if [ -L "$jre" ]; then \
         test "$(readlink "$jre")" = /usr/lib/jvm/java-8-openjdk-amd64/jre && \
@@ -133,6 +144,7 @@ RUN case "$ENABLE_GUI" in \
 COPY --from=native-compat /tmp/windu_registryd50.original /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/windu_registryd50.original
 COPY files/usr/local/bin/wrapper /usr/local/bin/wrapper
 COPY tools/gui-entrypoint /usr/local/bin/ise-gui-entrypoint
+COPY tools/start-rpcbind /usr/local/bin/ise-start-rpcbind
 COPY tools/impact /usr/local/bin/impact
 COPY tools/zynqconfig_test /usr/local/bin/zynqconfig_test
 COPY tools/xilhelp /usr/local/bin/xilhelp
