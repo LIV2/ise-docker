@@ -60,17 +60,28 @@ FROM usb-driver AS native-compat
 COPY tools/zynqconfig-test-compat.c /tmp/zynqconfig-test-compat.c
 RUN gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
     /tmp/zynqconfig-test-compat.c -o /tmp/zynqconfig-test-compat.so -ldl
+COPY tools/xilhelp-compat.c /tmp/xilhelp-compat.c
+RUN gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+    /tmp/xilhelp-compat.c -o /tmp/xilhelp-compat.so -ldl
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && \
+    rm -rf /var/lib/apt/lists/*
+COPY tools/patch-windu-registry.py /tmp/patch-windu-registry.py
+COPY --from=installed /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/windu_registryd50 /tmp/windu_registryd50.original
+RUN python3 /tmp/patch-windu-registry.py \
+    /tmp/windu_registryd50.original /tmp/windu_registryd50
 
 FROM base AS runtime
 COPY --from=usb-driver /opt/xilinx-usb-driver /opt/xilinx-usb-driver
 COPY --from=xprint /usr/lib/x86_64-linux-gnu/libXp.so.6.2.0 /usr/lib/x86_64-linux-gnu/
 RUN ln -s libXp.so.6.2.0 /usr/lib/x86_64-linux-gnu/libXp.so.6
 COPY --from=native-compat /tmp/zynqconfig-test-compat.so /usr/local/lib/ise/
+COPY --from=native-compat /tmp/xilhelp-compat.so /usr/local/lib/ise/
 
 # Keep all ISE device databases and both library architectures. EDK and
 # PlanAhead are separate products and are not needed for this CLI target.
 COPY --from=installed /opt/Xilinx/14.7/ISE_DS/ISE /opt/Xilinx/14.7/ISE_DS/ISE
 COPY --from=installed /opt/Xilinx/14.7/ISE_DS/common /opt/Xilinx/14.7/ISE_DS/common
+COPY --from=native-compat /tmp/windu_registryd50 /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/windu_registryd50
 COPY tools/patch-iostreams.py /usr/local/lib/ise/patch-iostreams.py
 # Apply the binary compatibility patch only when explicitly requested.
 ARG ENABLE_ROSETTA_COMPATIBILITY=0
@@ -119,10 +130,12 @@ RUN case "$ENABLE_GUI" in \
         esac; \
     done
 
+COPY --from=native-compat /tmp/windu_registryd50.original /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/windu_registryd50.original
 COPY files/usr/local/bin/wrapper /usr/local/bin/wrapper
 COPY tools/gui-entrypoint /usr/local/bin/ise-gui-entrypoint
 COPY tools/impact /usr/local/bin/impact
 COPY tools/zynqconfig_test /usr/local/bin/zynqconfig_test
+COPY tools/xilhelp /usr/local/bin/xilhelp
 ENV ISE_ENABLE_GUI=${ENABLE_GUI}
 ENV HOME=/tmp LANG=C.UTF-8
 WORKDIR /build
