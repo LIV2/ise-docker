@@ -26,7 +26,24 @@ REFERENCES = (
 )
 CHECK_START = 0xA46E70
 CHECK_END = 0xAADC5C
-BALANCE_WORD = 0xA46E74
+# Short jumps with the same destinations as the original fall-through
+# jumps. Their skipped bytes balance all four later integrity checks.
+BALANCED_JUMPS = (
+    (0xA472E6, bytes.fromhex("eb03494d58")),
+    (0xA47386, bytes.fromhex("eb035a92c4")),
+    (0xA473B7, bytes.fromhex("eb0325dda1")),
+    (0xA47468, bytes.fromhex("eb084e25adab89d2d5c8")),
+    (0xA474AD, bytes.fromhex("eb039b2a08")),
+    (0xA474B7, bytes.fromhex("eb03239cb4")),
+    (0xA474C3, bytes.fromhex("eb03e61633")),
+    (0xA474CD, bytes.fromhex("eb0323f2b3")),
+    (0xA474EE, bytes.fromhex("eb03f60abf")),
+)
+ROLLING_END = 0xA474F4
+# State entering CHECK_START in the pinned library's error-133 check.
+ROLLING_INITIAL = (0x966F725D, 18)
+# State entering CHECK_START in the protected HDL reader's check.
+HDL_ROLLING_INITIAL = (0xA9FE9B8A, 8)
 
 
 def u32(data, offset):
@@ -39,6 +56,36 @@ def product(data):
     for offset in range(CHECK_START, CHECK_END, 4):
         value = value * (u32(data, offset) | 1) & 0xFFFFFFFF
     return value
+
+
+def xor_checksum(data):
+    """Word contribution to the additional check reached during MAP."""
+    value = 0
+    for offset in range(CHECK_START, CHECK_END, 4):
+        value ^= u32(data, offset)
+    return value
+
+
+def rolling_state(data):
+    """Preserve both accumulator and rotation through the modified span."""
+    value, shift = ROLLING_INITIAL
+    for offset in range(CHECK_START, ROLLING_END, 4):
+        word = u32(data, offset)
+        rotated = ((word << shift) | (word >> (32 - shift))) & 0xFFFFFFFF
+        value = (value + (rotated ^ shift)) & 0xFFFFFFFF
+        shift = (value ^ shift) & 31
+    return value, shift
+
+
+def hdl_rolling_state(data):
+    """Preserve the additional check used by xlicmgr xlpp and COREgen."""
+    value, shift = HDL_ROLLING_INITIAL
+    for offset in range(CHECK_START, ROLLING_END, 4):
+        word = u32(data, offset)
+        rotated = ((word << shift) | (word >> (32 - shift))) & 0xFFFFFFFF
+        value = (value + rotated) & 0xFFFFFFFF
+        shift = (value ^ shift) & 31
+    return value, shift
 
 
 def patch(original):
@@ -68,18 +115,23 @@ def patch(original):
     struct.pack_into("<Q", data, data_header + 32, 0x25EDC)
     struct.pack_into("<I", data, data_header + 4, 6)
 
-    # Error 103 is a *second* check: a product of (word | 1). Its range
-    # includes the patched instructions, although the unpacker's initial
-    # additive checksum does not. Balance their contribution in the unused
-    # alignment word between the state constants and the first function.
-    # All factors are odd and thus invertible modulo 2**32. Keep the
-    # original expected checksum, comparison, and failure path unchanged.
-    if u32(data, BALANCE_WORD) != 0:
-        raise ValueError("code padding is not empty")
-    factor = product(original) * pow(product(data), -1, 2**32) % 2**32
-    struct.pack_into("<I", data, BALANCE_WORD, factor)
-    if product(data) != product(original):
-        raise ValueError("integrity checksum changed")
+    # MAP exercises XOR and rolling checks in addition to the product
+    # check seen by the CPLD tools. COREgen's protected HDL reader uses
+    # another rolling check. Preserve all four contributions together.
+    #
+    # Each E9 00000000 jumps to the next instruction. Replace it with
+    # EB 03 plus three skipped bytes. The adjacent pair becomes EB 08 plus
+    # eight skipped bytes. Each sequence preserves its continuation and
+    # machine state.
+    # The initial encrypted payload excludes this entire region.
+    for offset, replacement in BALANCED_JUMPS:
+        expected = bytes.fromhex("e900000000") * (len(replacement) // 5)
+        if data[offset:offset + len(expected)] != expected:
+            raise ValueError(f"unexpected fall-through jump at {offset:#x}")
+        data[offset:offset + len(replacement)] = replacement
+    for checksum in (product, xor_checksum, rolling_state, hdl_rolling_state):
+        if checksum(data) != checksum(original):
+            raise ValueError(f"{checksum.__name__} changed")
     return bytes(data)
 
 
