@@ -75,6 +75,10 @@ COPY tools/patch-windu-registry.py /tmp/patch-windu-registry.py
 COPY --from=installed /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/windu_registryd50 /tmp/windu_registryd50.original
 RUN python3 /tmp/patch-windu-registry.py \
     /tmp/windu_registryd50.original /tmp/windu_registryd50
+COPY tools/patch-windu-colors.py /tmp/patch-windu-colors.py
+COPY --from=installed /opt/Xilinx/14.7/ISE_DS/ISE/lib/lin64/libgdi50.so /tmp/libgdi50.so.original
+RUN python3 /tmp/patch-windu-colors.py \
+    /tmp/libgdi50.so.original /tmp/libgdi50.so
 
 FROM base AS runtime
 COPY --from=usb-driver /opt/xilinx-usb-driver /opt/xilinx-usb-driver
@@ -110,9 +114,10 @@ RUN set -e; case "$ENABLE_ROSETTA_COMPATIBILITY" in \
 
 # GUI support is independent of the optional Rosetta compatibility patch.
 # The ChipScope launchers source cs_common.sh, which requires Bash.
+COPY --from=native-compat /tmp/libgdi50.so /usr/local/lib/ise/libgdi50.so
 ARG ENABLE_GUI=1
 RUN case "$ENABLE_GUI" in \
-        0) exit 0 ;; \
+        0) rm /usr/local/lib/ise/libgdi50.so; exit 0 ;; \
         1) ;; \
         *) echo 'ENABLE_GUI must be 0 or 1' >&2; exit 2 ;; \
     esac && \
@@ -123,6 +128,9 @@ RUN case "$ENABLE_GUI" in \
     rm -rf /var/lib/apt/lists/* && \
     printf '\nrpcbind: 127.0.0.1 [::1]\n' >> /etc/hosts.allow && \
     printf '\nrpcbind: ALL\n' >> /etc/hosts.deny && \
+    gdi=/opt/Xilinx/14.7/ISE_DS/ISE/lib/lin64/libgdi50.so && \
+    mv "$gdi" "$gdi.original" && \
+    mv /usr/local/lib/ise/libgdi50.so "$gdi" && \
     jre=/opt/Xilinx/14.7/ISE_DS/ISE/java/lin64/jre && \
     if [ -L "$jre" ]; then \
         test "$(readlink "$jre")" = /usr/lib/jvm/java-8-openjdk-amd64/jre && \
