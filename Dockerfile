@@ -149,6 +149,14 @@ RUN case "$ENABLE_GUI" in \
         esac; \
     done
 
+# A small HTML viewer for installed help topics. The adapter accepts the
+# old Netscape launch protocol and opens RoboHelp topics without its JS shell.
+RUN if [ "$ENABLE_GUI" = 1 ]; then \
+        apt-get update && apt-get install -y --no-install-recommends dillo && \
+        rm -rf /var/lib/apt/lists/* && \
+        ln -s /usr/local/bin/ise-help-browser /usr/bin/netscape; \
+    fi
+COPY tools/help-browser /usr/local/bin/ise-help-browser
 COPY --from=native-compat /tmp/windu_registryd50.original /opt/Xilinx/14.7/ISE_DS/ISE/bin/lin64/windu_registryd50.original
 COPY files/usr/local/bin/wrapper /usr/local/bin/wrapper
 COPY tools/gui-entrypoint /usr/local/bin/ise-gui-entrypoint
