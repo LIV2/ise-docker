@@ -56,10 +56,16 @@ RUN git clone https://github.com/dennisfen/xilinx-usb-driver.git /opt/xilinx-usb
 
 FROM ${ISE_BASE_IMAGE} AS installed
 
+FROM usb-driver AS native-compat
+COPY tools/zynqconfig-test-compat.c /tmp/zynqconfig-test-compat.c
+RUN gcc -shared -fPIC -O2 -Wall -Wextra -Werror \
+    /tmp/zynqconfig-test-compat.c -o /tmp/zynqconfig-test-compat.so -ldl
+
 FROM base AS runtime
 COPY --from=usb-driver /opt/xilinx-usb-driver /opt/xilinx-usb-driver
 COPY --from=xprint /usr/lib/x86_64-linux-gnu/libXp.so.6.2.0 /usr/lib/x86_64-linux-gnu/
 RUN ln -s libXp.so.6.2.0 /usr/lib/x86_64-linux-gnu/libXp.so.6
+COPY --from=native-compat /tmp/zynqconfig-test-compat.so /usr/local/lib/ise/
 
 # Keep all ISE device databases and both library architectures. EDK and
 # PlanAhead are separate products and are not needed for this CLI target.
@@ -116,6 +122,7 @@ RUN case "$ENABLE_GUI" in \
 COPY files/usr/local/bin/wrapper /usr/local/bin/wrapper
 COPY tools/gui-entrypoint /usr/local/bin/ise-gui-entrypoint
 COPY tools/impact /usr/local/bin/impact
+COPY tools/zynqconfig_test /usr/local/bin/zynqconfig_test
 ENV ISE_ENABLE_GUI=${ENABLE_GUI}
 ENV HOME=/tmp LANG=C.UTF-8
 WORKDIR /build

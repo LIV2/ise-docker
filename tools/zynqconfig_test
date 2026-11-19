@@ -1,0 +1,38 @@
+#!/bin/bash
+# Scope the vendor self-test input validator to this process.
+set -e
+
+usage() {
+    cat <<'EOF'
+Usage: zynqconfig_test [--self-test]
+Run the ISE 14.7 Zynq configuration self-test with input validation.
+Invalid or obsolete test values are reported and rejected before applying them.
+EOF
+}
+
+case ${1-} in
+    -h|-help|--help)
+        usage
+        exit 0
+        ;;
+    --self-test)
+        shift
+        ;;
+    '') ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+if (( $# )); then
+    usage >&2
+    exit 2
+fi
+
+adapter=/usr/local/lib/ise/zynqconfig-test-compat.so
+if [[ ! -r $adapter ]]; then
+    echo "zynqconfig_test: missing input validator: $adapter" >&2
+    exit 1
+fi
+export LD_PRELOAD="$adapter${LD_PRELOAD:+:$LD_PRELOAD}"
+exec "${XILINX:-/opt/Xilinx/14.7/ISE_DS/ISE}/bin/lin64/zynqconfig_test"
