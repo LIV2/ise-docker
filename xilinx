@@ -1,6 +1,35 @@
 #!/bin/bash
 
-MY_PATH="$(dirname -- "${BASH_SOURCE[0]}")"            # relative
-MY_PATH="$(cd -- "$MY_PATH" && pwd)"
+set -e
 
-docker run --rm -it --net=host -e DISPLAY=$DISPLAY -v $MY_PATH/Xilinx.lic:/home/ise/.Xilinx/Xilinx.lic -v /home/andrea:/mnt -v /home/andrea/.Xauthority:/home/ise/.Xauthority ise-14-7 /usr/local/bin/wrapper "$@"
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+project_root=${ISE_PROJECT_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)}
+project_root=$(cd -- "$project_root" && pwd -P)
+working_dir=$(pwd -P)
+if [[ $working_dir != "$project_root" && $working_dir != "$project_root/"* ]]; then
+    echo 'The working directory must be inside ISE_PROJECT_ROOT.' >&2
+    exit 2
+fi
+container_dir="/build${working_dir#"$project_root"}"
+options=(--rm --init --platform linux/amd64 --user "$(id -u):$(id -g)"
+    --env HOME=/tmp --mount "type=bind,src=$project_root,dst=/build"
+    --workdir "$container_dir" --entrypoint /usr/local/bin/wrapper)
+if [[ -t 0 && -t 1 ]]; then
+    options+=(-it)
+else
+    options+=(-i)
+fi
+license=${ISE_LICENSE_FILE:-}
+if [[ -z $license && -f $script_dir/Xilinx.lic ]]; then
+    license=$script_dir/Xilinx.lic
+fi
+if [[ -n $license ]]; then
+    if [[ ! -f $license ]]; then
+        echo "License file does not exist: $license" >&2
+        exit 2
+    fi
+    license=$(cd -- "$(dirname -- "$license")" && pwd)/$(basename -- "$license")
+    options+=(--mount "type=bind,src=$license,dst=/tmp/Xilinx.lic,readonly"
+        --env XILINXD_LICENSE_FILE=/tmp/Xilinx.lic)
+fi
+exec docker run "${options[@]}" "${ISE_IMAGE:-ise-14-7}" "$@"

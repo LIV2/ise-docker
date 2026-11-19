@@ -1,0 +1,10 @@
+#!/bin/bash
+# Scope the Wind/U loader compatibility adapter to the legacy help viewer.
+set -e
+adapter=/usr/local/lib/ise/xilhelp-compat.so
+if [[ ! -r $adapter ]]; then
+    echo "xilhelp: missing loader adapter: $adapter" >&2
+    exit 1
+fi
+export LD_PRELOAD="$adapter${LD_PRELOAD:+:$LD_PRELOAD}"
+exec "${XILINX:-/opt/Xilinx/14.7/ISE_DS/ISE}/bin/lin64/xilhelp" "$@"

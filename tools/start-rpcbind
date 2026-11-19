@@ -1,0 +1,48 @@
+#!/bin/bash
+# Run before loading the vendor environment or dropping the GUI user ID.
+set -e
+
+case ${ISE_RPC:-1} in
+    0) exit 0 ;;
+    1) ;;
+    *) echo 'ISE_RPC must be 0 or 1.' >&2; exit 2 ;;
+esac
+
+# Host-networked Linux containers can share an existing portmapper.
+# Never replace it or remove its registrations.
+rpc_ready() {
+    env -u LD_LIBRARY_PATH -u LD_PRELOAD \
+        timeout 1 /usr/sbin/rpcinfo -p 127.0.0.1 >/dev/null 2>&1
+}
+if rpc_ready; then
+    exit 0
+fi
+if [[ $(id -u) != 0 ]]; then
+    echo 'Wind/U RPC initialization needs root before ISE drops privileges.' >&2
+    echo 'Use the updated xilinx-gui/run-docker launcher, or initialize rpcbind first.' >&2
+    exit 1
+fi
+
+# rpcbind itself drops to its package service account. The init process
+# reaps it, and Docker stops it when the container exits. No ports are
+# published by the launchers. The image's TCP-wrapper rules restrict RPC
+# portmapper clients to loopback. Ubuntu's rpcbind aborts with explicit -h addresses
+# under Rosetta, so use its normal listener setup.
+log=$(mktemp /tmp/ise-rpcbind.XXXXXX)
+env -u LD_LIBRARY_PATH -u LD_PRELOAD \
+    /usr/sbin/rpcbind -f >"$log" 2>&1 &
+rpc_pid=$!
+for ((attempt=0; attempt<30; attempt++)); do
+    if rpc_ready; then
+        rm -f -- "$log"
+        exit 0
+    fi
+    if ! kill -0 "$rpc_pid" 2>/dev/null; then
+        break
+    fi
+    sleep 0.1
+done
+echo 'Failed to initialize the Wind/U RPC portmapper:' >&2
+cat "$log" >&2
+rm -f -- "$log"
+exit 1

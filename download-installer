@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Fetch and verify ISE media without keeping AMD credentials in the project."""
+
+import argparse
+import hashlib
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+from urllib.parse import urlsplit
+import webbrowser
+
+
+FILENAME = "Xilinx_ISE_DS_Lin_14.7_1015_1.tar"
+# AMD's checksum in the Full Installer for Linux / Verify Download dialog.
+MD5 = "e8065b2ffb411bb74ae32efa475f9817"
+PORTAL = "https://account.amd.com/en/forms/downloads/xef.html?filename=" + FILENAME
+ROOT = Path(__file__).resolve().parent
+
+
+def verify(path):
+    digest = hashlib.md5()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != MD5:
+        raise ValueError(f"Installer checksum mismatch: {path}")
+
+
+def import_archive(source, target):
+    print(f"Verifying {source} ...", flush=True)
+    verify(source)
+    if source.resolve() != target.resolve():
+        partial = target.with_suffix(target.suffix + ".part")
+        shutil.copyfile(source, partial)
+        partial.replace(target)
+    print(f"Installer ready: {target}", flush=True)
+
+
+def download(url, target):
+    parsed = urlsplit(url)
+    host = parsed.hostname or ""
+    if (parsed.scheme != "https" or parsed.username or parsed.password
+            or not any(host == domain or host.endswith("." + domain)
+                       for domain in ("amd.com", "xilinx.com"))
+            or any(char in url for char in "\r\n\0")):
+        raise ValueError("Use an HTTPS installer download URL from AMD/Xilinx.")
+    partial = target.with_suffix(target.suffix + ".part")
+    # A signed URL is a temporary credential: stdin keeps it out of ps output.
+    quoted = url.replace("\\", "\\\\").replace('"', '\\"')
+    print("Downloading installer from AMD/Xilinx (resuming if possible) ...",
+          flush=True)
+    proc = subprocess.run(
+        ["curl", "--fail", "--location", "--proto", "=https",
+         "--proto-redir", "=https", "--retry", "3", "--connect-timeout", "30",
+         "--continue-at", "-", "--output", str(partial), "--config", "-"],
+        input=f'url = "{quoted}"\n', text=True)
+    if proc.returncode:
+        raise ValueError("Download failed; the partial file is retained. "
+                         "Retry with a fresh URL if the signed link expired.")
+    try:
+        verify(partial)
+    except ValueError:
+        # Never resume an HTML error page or a completed corrupt archive.
+        partial.replace(target.with_suffix(target.suffix + ".invalid"))
+        raise
+    partial.replace(target)
+    print(f"Installer ready: {target}", flush=True)
+
+
+def find_download(directory):
+    # Browsers add a numeric suffix when an older download already exists.
+    candidates = [directory / FILENAME]
+    candidates.extend(directory.glob(FILENAME[:-4] + " (*).tar"))
+    return sorted((p for p in candidates if p.is_file()),
+                  key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--url-file", type=Path,
+                        help="file containing an AMD-issued direct download URL")
+    parser.add_argument("--from-file", type=Path,
+                        help="verify and import an already downloaded archive")
+    parser.add_argument("--downloads-dir", type=Path,
+                        default=Path.home() / "Downloads",
+                        help="browser download folder (default: ~/Downloads)")
+    parser.add_argument("--no-browser", action="store_true",
+                        help="fail instead of opening AMD's sign-in page")
+    parser.add_argument("--timeout", type=int, default=7200,
+                        help="seconds to wait for a browser download (default: 7200)")
+    args = parser.parse_args()
+    if args.url_file and args.from_file:
+        parser.error("--url-file and --from-file are mutually exclusive")
+    destination = ROOT / "xilinx-installer" / FILENAME
+    destination.parent.mkdir(exist_ok=True)
+    if destination.exists():
+        import_archive(destination, destination)
+        return
+    if args.from_file:
+        import_archive(args.from_file, destination)
+        return
+    if args.url_file:
+        download(args.url_file.read_text().strip(), destination)
+        return
+
+    checked = set()
+
+    def adopt_download():
+        for candidate in find_download(args.downloads_dir):
+            stat = candidate.stat()
+            signature = (str(candidate), stat.st_size, stat.st_mtime_ns)
+            if signature in checked:
+                continue
+            checked.add(signature)
+            try:
+                import_archive(candidate, destination)
+                return True
+            except ValueError as error:
+                print(error, file=sys.stderr)
+        return False
+
+    if adopt_download():
+        return
+    if args.no_browser or not sys.stdin.isatty():
+        raise ValueError("No installer cached. Run ./download-installer interactively "
+                         "once, or provide --url-file /path/to/amd-download-url.")
+    print("Opening the exact AMD installer download page. Sign in if asked,\n"
+          "review the address form, then click Download. This script will\n"
+          "detect the completed archive, verify it, and cache it automatically.\n"
+          f"Watching: {args.downloads_dir}", flush=True)
+    if not webbrowser.open(PORTAL):
+        raise ValueError(f"Could not open a browser. Open {PORTAL}")
+    deadline = time.monotonic() + args.timeout
+    while time.monotonic() < deadline:
+        if adopt_download():
+            return
+        time.sleep(2)
+    raise ValueError("Timed out waiting for the download. Rerun after it completes, "
+                     "or set --downloads-dir to your browser's download folder.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError) as error:
+        print(f"download-installer: {error}", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit(130)

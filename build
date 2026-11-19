@@ -1,3 +1,39 @@
 #!/bin/bash
 
-docker build -t ise-14-7 .
+set -e
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+
+# An external vendor image does not need local installer media. Honor both
+# Docker spellings and the final value if an argument is supplied twice.
+source_image=install
+expect_arg=0
+needs_media=1
+for arg in "$@"; do
+    case "$arg" in --help|--check) needs_media=0 ;; esac
+    if [[ $expect_arg == 1 ]]; then
+        case "$arg" in
+            ISE_BASE_IMAGE=*) source_image=${arg#*=} ;;
+            ISE_BASE_IMAGE) source_image=${ISE_BASE_IMAGE:-install} ;;
+        esac
+        expect_arg=0
+    elif [[ $arg == --build-arg ]]; then
+        expect_arg=1
+    elif [[ $arg == --build-arg=ISE_BASE_IMAGE=* ]]; then
+        source_image=${arg#--build-arg=ISE_BASE_IMAGE=}
+    elif [[ $arg == --build-arg=ISE_BASE_IMAGE ]]; then
+        source_image=${ISE_BASE_IMAGE:-install}
+    fi
+done
+if [[ $needs_media == 1 && $source_image == install ]]; then
+    split=xilinx-installer/Xilinx_ISE_DS_14.7_1015_1
+    if [[ ! -f $split-1.tar || ! -f $split-2.zip.xz ||
+          ! -f $split-3.zip.xz || ! -f $split-4.zip.xz ]]; then
+        ./download-installer
+    fi
+fi
+# Explicit Docker arguments take precedence over the environment shortcut.
+compatibility_args=()
+if [[ -n ${ENABLE_ROSETTA_COMPATIBILITY+x} ]]; then
+    compatibility_args+=(--build-arg "ENABLE_ROSETTA_COMPATIBILITY=$ENABLE_ROSETTA_COMPATIBILITY")
+fi
+docker build --platform linux/amd64 -t ise-14-7 "${compatibility_args[@]}" "$@" .

@@ -1,0 +1,27 @@
+#!/bin/bash
+set -eu
+
+media=/tmp/media
+full=Xilinx_ISE_DS_Lin_14.7_1015_1.tar
+split=Xilinx_ISE_DS_14.7_1015_1
+cd /tmp/install
+if [[ -f "$media/$full" ]]; then
+    echo "e8065b2ffb411bb74ae32efa475f9817  $media/$full" | md5sum -c -
+    tar xf "$media/$full" --strip-components=1
+elif [[ -f "$media/$split-1.tar" ]]; then
+    for part in 2 3 4; do
+        test -f "$media/$split-$part.zip.xz" || {
+            echo "Missing installer part: $split-$part.zip.xz" >&2
+            exit 1
+        }
+    done
+    tar xf "$media/$split-1.tar"
+    # The split installer reads the remaining parts from downloadlocation_dir.
+    for part in 2 3 4; do
+        ln -s "$media/$split-$part.zip.xz" "/tmp/$split-$part.zip.xz"
+    done
+else
+    echo 'No installer media found. Run ./download-installer first.' >&2
+    exit 1
+fi
+TERM=xterm bin/lin64/batchxsetup -batch /tmp/install/config < /dev/null

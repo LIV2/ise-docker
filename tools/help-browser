@@ -1,0 +1,40 @@
+#!/bin/bash
+# Accept the Netscape command protocol used by the legacy help framework.
+set -e
+
+if [[ $# == 2 && $1 == -remote && $2 == openURL\(*\) ]]; then
+    url=${2#openURL(}
+    url=${url%)}
+    case $url in
+        *,new-window) url=${url%,new-window} ;;
+        *,new-tab) url=${url%,new-tab} ;;
+    esac
+    # Some callers quote the URL inside the remote command as well.
+    if [[ $url == \"*\" ]]; then
+        url=${url#\"}; url=${url%\"}
+    fi
+elif [[ $# == 1 && $1 != -* ]]; then
+    url=$1
+else
+    echo 'Usage: ise-help-browser URL | -remote openURL(URL[,new-window])' >&2
+    exit 2
+fi
+if [[ -z $url || $url == -* ]]; then
+    echo 'ise-help-browser: missing or invalid URL' >&2
+    exit 2
+fi
+
+# RoboHelp encodes a relative topic filename in the frameset URL fragment.
+# Dillo has no JavaScript; open that topic directly. Ordinary anchors stay
+# intact. Treat URLs as data throughout; never evaluate the remote command.
+if [[ $url == file://*\#* ]]; then
+    base=${url%%#*}
+    topic=${url#*#}
+    if [[ $topic =~ ^[^:/?#]+(/[^:?#]+)*\.html?(#.*)?$ ]]; then
+        url=${base%/*}/$topic
+    fi
+fi
+
+# Dillo and its helper processes must use the system C++ and X11 libraries.
+unset LD_LIBRARY_PATH LD_PRELOAD
+exec /usr/bin/dillo "$url"
