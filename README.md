@@ -39,6 +39,26 @@ docker build --platform linux/amd64 --build-arg ENABLE_GUI=0 \
 GNU make 4.3, and the same ISE and common files.
 GUI support adds Java 8, GCC for ISim, X11 libraries, and ChipScope launcher
 fixes. It does not start graphical applications during command-line builds.
+The runtime includes the legacy XPrint library, 32-bit runtime libraries,
+LSB loader aliases, and the C-shell/Perl interpreters used by vendor helpers.
+All five ChipScope and IBERT launchers run under Bash. The Zynq self-test
+launcher validates its obsolete inputs before passing valid changes to the
+original configuration engine. The legacy help launcher also receives
+64-bit loader and registry compatibility fixes.
+
+GUI launchers initialize or reuse `rpcbind` for the old Motif tools' Wind/U
+registry, avoiding its 60-second connection timeout. A separate legacy
+indexed-color handshake fix removes another 10-second wait on 24-bit
+displays. It recognizes the helper's completed "indexed colors unavailable"
+reply and immediately uses the existing true-color fallback; it does not
+pretend that a true-color display has an indexed palette. The original
+`libgdi50.so` is retained as `libgdi50.so.original`.
+CPLD Timing Analyzer opens after two warnings about its missing vendor
+context-help map. Dillo displays installed HTML topics through a Netscape
+command adapter; RoboHelp's JavaScript navigation/search/popups and the missing
+CPLD context mappings are not restored. See the
+[coverage report](tests/tool-coverage-2026-11-18.md) for tested workflows.
+
 Linux USB/JTAG support is included in both variants. PlanAhead and EDK
 are not included.
 
@@ -60,6 +80,17 @@ supplied by the installer or source image. With `1`, it applies the
 version-specific [binary patch](tools/patch-iostreams.py),
 accepts only the tested original library hash, and keeps each original
 beside the patched file as `.so.original`. Invalid values fail the build.
+
+The patch preserves the library's product, XOR and both rolling integrity
+checks, including those reached during FPGA MAP and CORE Generator's
+protected HDL preprocessing. Earlier patches could fail MAP or silently
+omit CORE Generator HDL dependencies. Rebuild those images to use the
+corrected patch. The original verification code and expected checksums
+remain unchanged; deliberately corrupted libraries are still rejected.
+
+FIR and ICON generation now complete with the patched library. See the
+[tool coverage report](tests/tool-coverage-2026-11-18.md) and the
+[CORE Generator regression test](tests/test_coregen.py).
 
 The build wrapper also supports an environment-variable shortcut:
 
@@ -158,6 +189,38 @@ temporary file, mounted read-only and deleted on exit. No `xhost +` or
 disabling authentication is needed. Project files persist in the mounted
 directory; GUI preferences in the temporary container home are discarded
 on exit.
+
+GUI containers briefly start as root to initialize the RPC portmapper, then
+drop to the host UID/GID before running vendor code. `rpcbind` drops to its
+own service account. Linux host networking reuses an existing portmapper;
+the launcher does not stop or replace that service. `run-docker` also keeps
+the caller's supplementary groups for USB/JTAG access. Command-line
+launches without a display do not start RPC.
+
+The image restricts portmapper requests to loopback. A GUI-only adapter
+also binds Wind/U's automatically created registry TCP and callback UDP
+sockets to loopback, including on Linux with host networking. Existing
+host portmappers retain their own access policy.
+
+Update the host launchers together with the image. Direct Docker callers
+using `ise-gui-entrypoint` can supply numeric `ISE_GUI_UID` and `ISE_GUI_GID`
+and optional comma-separated `ISE_GUI_GROUPS`. A non-root entrypoint needs
+an already running portmapper. `ISE_RPC=0` explicitly disables initialization
+for diagnostics, restoring the vendor timeout behavior. The launchers map
+their container hostname to loopback so the native registry can find itself.
+
+The GUI image includes Dillo (about 4 MB including its extra dependencies)
+and `/usr/bin/netscape` as an adapter to `ise-help-browser`. The adapter
+accepts plain URLs and legacy `-remote openURL(...)` requests, and converts
+RoboHelp frameset/topic URLs to direct HTML topic URLs. Ordinary topic links
+and anchors work; JavaScript-based help search and popups are unavailable. CPLD
+Timing Analyzer's installed manual can be opened directly even though its
+context-help map is missing:
+
+```sh
+xilinx-gui ise-help-browser \
+  file:///opt/Xilinx/14.7/ISE_DS/ISE/doc/usenglish/help/iseguide/mergedProjects/timingan/html/ta_b_overview.htm
+```
 
 With GUI enabled, the original JRE remains at
 `ISE/java/lin64/jre.original`. ISim can use Lite mode without a full ISim
